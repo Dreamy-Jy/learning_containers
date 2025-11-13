@@ -23,4 +23,7 @@ I will not be creating production ready technology
 ## Program Plan
 
 1. Configure Container environment.
+   - Check the version of Linux
+   - Generate a hostname
+   - Create a process with the right CGroup and Namespace
 2. Run Container CRUD service.
