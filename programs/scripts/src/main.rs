@@ -7,12 +7,13 @@ use std::{
 };
 
 use nix::{
+    mount::{MsFlags, mount},
     sched::{CloneFlags, clone, unshare},
     sys::{
         signal::Signal,
         wait::{WaitStatus, waitpid},
     },
-    unistd::execve,
+    unistd::{chdir, chroot, execve},
 };
 
 fn main() {
@@ -21,43 +22,14 @@ fn main() {
 
     match args[1].as_str() {
         "run" => run(),
-        "run2" => run_syscall(),
         "child" => child(),
+        "test" => test(),
         _ => panic!("help"),
     }
 }
 
 fn run() {
-    dbg!("Entered the run function");
     dbg!(id());
-    let args = env::args().collect::<Vec<String>>();
-
-    let mut cmd = Command::new("/proc/self/exe");
-
-    unsafe {
-        cmd.pre_exec(|| {
-            dbg!(format!("running unshare before command execution"));
-            let result = unshare(
-                CloneFlags::CLONE_NEWUSER
-                    | CloneFlags::CLONE_NEWUTS
-                    | CloneFlags::CLONE_NEWPID
-                    | CloneFlags::CLONE_NEWNS,
-            )
-            .map_err(|e| Error::from_raw_os_error(e as i32));
-
-            dbg!(id());
-            result
-        });
-    }
-
-    let _status = cmd
-        .arg("child")
-        .args(&args[2..])
-        .status()
-        .expect("Failed to execute command");
-}
-
-fn run_syscall() {
     let exe_args: Vec<CString> = {
         let cmd_line_args = env::args()
             .skip(2)
@@ -77,7 +49,7 @@ fn run_syscall() {
         .collect();
 
     dbg!(&exe_args);
-    dbg!(&exe_env);
+    // dbg!(&exe_env);
 
     let child_pid = unsafe {
         clone(
@@ -112,8 +84,54 @@ fn child() {
     dbg!(id());
     let args = env::args().collect::<Vec<String>>();
 
+    chroot("/ubuntu-filesystem").unwrap();
+    chdir("/").unwrap();
+    mount::<str, str, str, str>(Some("proc"), "proc", Some("proc"), MsFlags::empty(), None)
+        .unwrap();
+
     let _status = Command::new(&args[2])
         .args(&args[3..])
+        .status()
+        .expect("Failed to execute command");
+}
+
+fn test() {
+    dbg!("Entered the test function");
+    dbg!(id());
+
+    chroot("/ubuntu-filesystem").unwrap();
+    chdir("/").unwrap();
+    mount::<str, str, str, str>(Some("proc"), "proc", Some("proc"), MsFlags::empty(), None)
+        .unwrap();
+}
+
+#[allow(dead_code)]
+fn old_run() {
+    dbg!("Entered the run function");
+    dbg!(id());
+    let args = env::args().collect::<Vec<String>>();
+
+    let mut cmd = Command::new("/proc/self/exe");
+
+    unsafe {
+        cmd.pre_exec(|| {
+            dbg!(format!("running unshare before command execution"));
+            let result = unshare(
+                CloneFlags::CLONE_NEWUSER
+                    | CloneFlags::CLONE_NEWUTS
+                    | CloneFlags::CLONE_NEWPID
+                    | CloneFlags::CLONE_NEWNS,
+            )
+            .map_err(|e| Error::from_raw_os_error(e as i32));
+
+            dbg!(id());
+            result
+        });
+    }
+
+    let _status = cmd
+        .arg("child")
+        .args(&args[2..])
         .status()
         .expect("Failed to execute command");
 }
