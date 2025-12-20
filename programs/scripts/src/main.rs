@@ -1,21 +1,119 @@
-use std::env;
+use std::{
+    env,
+    ffi::CString,
+    io::Error,
+    os::unix::process::CommandExt,
+    process::{Command, id},
+};
+
+use nix::{
+    sched::{CloneFlags, clone, unshare},
+    sys::{
+        signal::Signal,
+        wait::{WaitStatus, waitpid},
+    },
+    unistd::execve,
+};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
+    dbg!(&args);
 
     match args[1].as_str() {
         "run" => run(),
+        "run2" => run_syscall(),
         "child" => child(),
         _ => panic!("help"),
     }
-
-    dbg!(args);
 }
 
 fn run() {
-    println!("From run() function:\n\trunning the main coroutine");
+    dbg!("Entered the run function");
+    dbg!(id());
+    let args = env::args().collect::<Vec<String>>();
+
+    let mut cmd = Command::new("/proc/self/exe");
+
+    unsafe {
+        cmd.pre_exec(|| {
+            dbg!(format!("running unshare before command execution"));
+            let result = unshare(
+                CloneFlags::CLONE_NEWUSER
+                    | CloneFlags::CLONE_NEWUTS
+                    | CloneFlags::CLONE_NEWPID
+                    | CloneFlags::CLONE_NEWNS,
+            )
+            .map_err(|e| Error::from_raw_os_error(e as i32));
+
+            dbg!(id());
+            result
+        });
+    }
+
+    let _status = cmd
+        .arg("child")
+        .args(&args[2..])
+        .status()
+        .expect("Failed to execute command");
+}
+
+fn run_syscall() {
+    let exe_args: Vec<CString> = {
+        let cmd_line_args = env::args()
+            .skip(2)
+            .map(|a| CString::new(a).unwrap())
+            .collect::<Vec<CString>>();
+        let mut exe_args = vec![CString::from(c"/proc/self/exe"), CString::from(c"child")];
+        exe_args.extend(cmd_line_args);
+        exe_args
+    };
+    let exe_env: Vec<CString> = env::vars_os()
+        .map(|(k, v)| {
+            let mut kv = k;
+            kv.push("=");
+            kv.push(v);
+            CString::new(kv.into_encoded_bytes()).unwrap()
+        })
+        .collect();
+
+    dbg!(&exe_args);
+    dbg!(&exe_env);
+
+    let child_pid = unsafe {
+        clone(
+            Box::new(move || -> isize {
+                match execve(c"/proc/self/exe", &exe_args, &exe_env) {
+                    Ok(_) => 0,
+                    Err(e) => {
+                        eprintln!("execve failed: {e}");
+                        127
+                    }
+                }
+            }),
+            &mut [0u8; 1024 * 1024],
+            CloneFlags::CLONE_NEWUSER
+                | CloneFlags::CLONE_NEWUTS
+                | CloneFlags::CLONE_NEWNS
+                | CloneFlags::CLONE_NEWPID,
+            Some(Signal::SIGCHLD as i32),
+        )
+        .unwrap()
+    };
+
+    match waitpid(child_pid, None) {
+        Ok(WaitStatus::Exited(_, _code)) => {}
+        Ok(WaitStatus::Signaled(_, _sig, _)) => {}
+        _ => {}
+    }
 }
 
 fn child() {
-    println!("From child() function:\n\trunning the child coroutine");
+    dbg!("Entered the child function");
+    dbg!(id());
+    let args = env::args().collect::<Vec<String>>();
+
+    let _status = Command::new(&args[2])
+        .args(&args[3..])
+        .status()
+        .expect("Failed to execute command");
 }
