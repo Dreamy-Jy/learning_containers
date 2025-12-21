@@ -59,7 +59,7 @@ Service is made of a Daemon & CLI Interface. The Deamon performs Container CRUD 
     - Update
     - Destroy
 
-## Furthure Study
+## Further Study
 
 Using wasm as container instead of linux.
 How to Hack ill configured linux system.
