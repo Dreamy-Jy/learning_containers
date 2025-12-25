@@ -3,7 +3,8 @@ use std::{fs, io::ErrorKind, process::id};
 use nix::{
     mount::{MsFlags, mount},
     sched::{CloneFlags, unshare},
-    unistd::{Gid, Uid, chdir, chroot, setresgid, setresuid},
+    sys::wait::waitpid,
+    unistd::{ForkResult, Gid, Uid, chdir, chroot, fork},
 };
 
 fn write_file(path: &str, contents: &str) -> Result<(), std::io::Error> {
@@ -50,21 +51,29 @@ fn main() {
         Gid::current()
     );
 
-    // This works for some reason
+    // This worked for some reason
     // mount::<str, str, str, str>(None, "/", None, MsFlags::MS_REC | MsFlags::MS_PRIVATE, None)
     //     .unwrap();
+    match unsafe { fork() } {
+        Ok(ForkResult::Child) => {
+            // Child is now in the PID namespace
+            chroot("/ubuntu-filesystem").unwrap();
+            chdir("/").unwrap();
 
-    println!("You are root *in the namespace* (mapped to your host uid/gid).");
-
-    chroot("/ubuntu-filesystem").unwrap();
-    chdir("/").unwrap();
-    // This fails for some reason
-    // mount(
-    //     Some("proc"), // source: do not pass None here
-    //     "/proc",      // target
-    //     Some("proc"), // fstype
-    //     MsFlags::MS_NOSUID | MsFlags::MS_NODEV | MsFlags::MS_NOEXEC,
-    //     None::<&str>,
-    // )
-    // .unwrap();
+            // This only works in a new process.
+            mount(
+                None::<&str>,
+                "/proc",
+                Some("proc"),
+                MsFlags::empty(),
+                None::<&str>,
+            )
+            .unwrap();
+        }
+        Ok(ForkResult::Parent { child }) => {
+            // Parent waits for child
+            waitpid(child, None).unwrap();
+        }
+        Err(e) => panic!("Fork failed: {}", e),
+    }
 }
