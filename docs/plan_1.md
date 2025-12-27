@@ -61,7 +61,7 @@ Service is made of a Daemon & CLI Interface. The Deamon performs Container CRUD 
 
 ## Further Study
 
-Using wasm as container instead of linux.
+Using WASM as container instead of linux.
 How to Hack ill configured linux system.
 
 - What can processes do.

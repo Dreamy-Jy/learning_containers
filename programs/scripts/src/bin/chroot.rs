@@ -62,7 +62,9 @@ fn main() {
 
             // This only works in a new process.
             mount(
-                None::<&str>,
+                Some("proc"), // Question: what is the point of this parameter?
+                // Question: ^ : what's the difference between using None::<&str> and Some("proc")
+                // here?
                 "/proc",
                 Some("proc"),
                 MsFlags::empty(),
