@@ -67,6 +67,7 @@ Concepts:
 	- scripts for experiments
 - from a kernel code perspective
 
+# Background
 ## Linux Namespaces
 Relevant Man Pages
 [namespace(7)](https://man7.org/linux/man-pages/man7/namespaces.7.html)
@@ -122,40 +123,66 @@ These are files set limits on the amount of namespaces that can be created.
 - _max_user_namespaces_
 - _max_uts_namespaces_
 ### User Namespaces
-User namespaces isolate security-related identifiers and attributes, in particular, user IDs and group IDs (see [credentials(7)](https://man.archlinux.org/man/credentials.7.en)), the root directory, keys (see [keyrings(7)](https://man.archlinux.org/man/keyrings.7.en)), and capabilities (see [capabilities(7)](https://man.archlinux.org/man/capabilities.7.en)).
-
-- A process can have different user and group IDs inside and outside of a user namespace
-    - This means an unprivileged process can be privileged within a namespace.
-- User Name spaces can be nested. There is a limit to this.
+"User namespaces isolate security-related identifiers and attributes, in particular, user IDs and group IDs (see [credentials(7)](https://man.archlinux.org/man/credentials.7.en)), the root directory, keys (see [keyrings(7)](https://man.archlinux.org/man/keyrings.7.en)), and capabilities (see [capabilities(7)](https://man.archlinux.org/man/capabilities.7.en))." - Man Page
+#### Notes
+- User namespaces can be nested. There is a limit to this.
 - A process can only be in one user name space.
-- When a process is added to a name, space it gains a full set of capabilities within that name space. This set of capabilities can be recalculated though.
-    - User Namespace capabilities are hierarchical. Processes in a parent user namespace have the same capabilities of that user namespace in child user namespaces.
-    - Your process will only have access to privileged actions for resources owned by the user namespace. your process needs to be privileged in the root user namespace to perform these privileged actions.
-- Your process doesn’t need to be privileged to create a new user namespace, but does require privileges to create any other kind of namespace. There are some provided workarounds within syscalls to allow unprivileged processes to create a full suite of namespaces.
-- When creating an entering a user name, space, your processes user ID and group ID are not automatically mapped to local user in group IDs.
-    - You must manually map them via writing to UID and GID map files, you can only do this operation once.
-        - Different processes may not get the same value reading map files. Reading from a processes, UID or GID map files provides data relative to the frame of reference of the process reading that file.
-    - In order to use system calls that modify UID or GID, Both values must be mapped locally.
-        - For mapping GID you may need to set the set groups capability to deny, if your process does not have the CAP_SETGID capability.
-    - Be aware that unmapped IDs can show up within a variety of system interfaces.
-- Project IDs Can also be mapped within the name space. I have no clue what these are what they do nor any interest in finding out.
+- Your process doesn’t need to be privileged to create a new user namespace, but does require privileges to create any other kind of namespace.
 - When trying to access a file, the system will map the files, credentials, and your process of credentials back to what they would be in the root user name space.
     - This behavior can be overrated with capabilities.
+- **Project IDs** effect setting disk quotas. [setquota(8)](https://man.archlinux.org/man/setquota.8.en) and [quotactl(2)](https://man.archlinux.org/man/quotactl.2.en) can be used for this.
+##### U/GID Mappings
+- Processes' U/GIDs are initially unmapped to within that user namespace they are added to.
+	- You must manually map them via writing to UID and GID map files(`/proc/<pid>/(uid_map | gid_map)`), you can only do this operation once.
+		- The result of reading uid_map or gid_map files are relative to the process accessing them.
+	- In order to use system calls that modify UID or GID, Both values must be mapped locally.
+        - For mapping GID you may need to set the set groups capability to deny, if your process does not have the CAP_SETGID capability.
+    - Be aware that unmapped IDs can show up within a variety of system interfaces.
+- Processes can have different U/GIDs in and out of a namespace.
+	- Unprivileged processes can be privileged in a namespace.
+- **Unmapped U/GID**: When using operations that return U/GIDs that are not mapped within your user namespace you may get the overflow(65534) U/GID.
+- **Passing U/GID Over Sockets**: When using sockets (check **SCM_CREDENTIALS** in[unix(7)](https://man.archlinux.org/man/unix.7.en)) to communicate uid and gids between process in different namespaces there is translation to the frame of reference of the receiving process.
+##### Capabilities
+- When a process is added to a namespace it gains a full set of capabilities within that name space. This set of capabilities can be recalculated though.
+    - User Namespace capabilities are hierarchical and cascading. Processes in a parent user namespace have the same capabilities of that user namespace in child user namespaces.
+    - Your process will only have access to privileged actions for resources owned by the user namespace. Your process needs to be privileged in the root user namespace to perform these privileged actions.
+%% 
+#### Related System Calls
+[unshare(2)](https://man.archlinux.org/man/unshare.2.en) or [clone(2)](https://man.archlinux.org/man/clone.2.en) - 
+[fork(2)](https://man.archlinux.org/man/fork.2.en)
+[setns(2)](https://man.archlinux.org/man/setns.2.en)
+[ioctl(2)](https://man.archlinux.org/man/ioctl.2.en)
+[ioctl_nsfs(2)](https://man.archlinux.org/man/ioctl_nsfs.2.en)
+[prctl(2)](https://man.archlinux.org/man/prctl.2.en)
+[setgroups(2)](https://man.archlinux.org/man/setgroups.2.en)
+[getuid(2)](https://man.archlinux.org/man/getuid.2.en), [getgid(2)](https://man.archlinux.org/man/getgid.2.en) [stat(2)](https://man.archlinux.org/man/stat.2.en), [waitid(2)](https://man.archlinux.org/man/waitid.2.en)
+#### Related File Systems 
+%%
 
-Where is the process data structure within the kernel?
-
-Man Page Perspective
-- Overview and Notes
-- Relevant System Calls and Files
-Kernel Perspective
-- What are the Kernel data structures.
-- What subsystems are these structure used in.
+### Further Study
+```js
+// script used to collect man page links from man page.
+const unique_links = [...new Set([...document.querySelectorAll("p > a")].map(e => e.text))];
+const regex = /(?:\w+_)?[A-Za-z]+\([0-9]\)/;
+unique_links.filter(e => regex.test(e))
+```
 ### Mount Namespaces
-
+[mount_namespaces(7)](https://man.archlinux.org/man/mount_namespaces.7.en)
 ### PID Namespaces
+### UTS Namespace
+Isolates the hostname and the NIS domain name. 
+- When you create a new UTS namespace, you inherit the hostname and NIS domain name from the parent UTS namespace.
+- To use UTS namespaces you must configure the kernel with **CONFIG_UTS_NS**.
+#### Related System Calls
+[sethostname(2)](https://man.archlinux.org/man/sethostname.2.en) 
+[setdomainname(2)](https://man.archlinux.org/man/setdomainname.2.en)
+[uname(2)](https://man.archlinux.org/man/uname.2.en)
+[gethostname(2)](https://man.archlinux.org/man/gethostname.2.en)
+[getdomainname(2)](https://man.archlinux.org/man/getdomainname.2.en)
 
 ---
 
 Mounts
 How would I know which file systems to mount?
 
+Get Non-Driver ID, Get Library Card.
