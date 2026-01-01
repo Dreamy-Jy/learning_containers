@@ -169,6 +169,44 @@ unique_links.filter(e => regex.test(e))
 ### Mount Namespaces
 [mount_namespaces(7)](https://man.archlinux.org/man/mount_namespaces.7.en)
 ### PID Namespaces
+[pid_namespaces(7)](https://man.archlinux.org/man/pid_namespaces.7.en)
+
+PID Namespaces isolate local PID with a that specific PID namespace. This is useful for preforming operations on a collective subset of processes running on your system.
+
+Use of PID namespaces requires a kernel that is configured with the **CONFIG_PID_NS** option.
+#### Notes
+- The first process in a new PID namespace functions like the init/systemd ([init(1)](https://man.archlinux.org/man/init.1.en)) root process.
+	- It adopts orphaned processes in the namespace. You can change this behavior using [prctl(2)](https://man.archlinux.org/man/prctl.2.en) **PR_SET_CHILD_SUBREAPER**.
+	- If the PID Namespace's init process exits, all processes are killed via `SIGKILL`.
+	- Child processes can't send signals to the init process, if the init process doesn't have a signal handler for that signal.
+	- When an init process or process in a parent pid namespace send kill and stop signals PID Namespaces cascade them forcibly. 
+- PID namespaces are nested.
+- Processes have unique PIDs in each namespace they are visible to. Processes in child PID namespaces can't view processes in their ancestor PID namespaces.
+	- Not sure how deep ancestors can peer into their descendants. 
+- When moving processes between PID namespaces, processes can only descent into it's descendants. 
+- Use the **NS_GET_PARENT** [ioctl(2)](https://man.archlinux.org/man/ioctl.2.en) to discover the relationships between PID namespaces.
+- A process can only call [unshare(2)](https://man.archlinux.org/man/unshare.2.en) to create a new pid namespace once.
+	- something about emptying the `/proc/<pid>/ns/pid_for_children` symlink
+- **CLONE_NEWPID** is not allowed with the follow **CLONE_(*)** flags:
+	- **CLONE_THREAD**
+	- **CLONE_SIGHAND**
+	- **CLONE_VM**
+- the `/proc` filesystem shows all processes visible to the PID namespace of the process that mounts it.
+	- child process could view parent process
+	- Its recommend to change root and mount a new proc to change this.
+	- If you create a new mount namespace you may be able to not need to change namespace
+- `/proc/sys/kernel/ns_last_pid` - shows the last PID that's been created in the PID namespace of the process calling it.
+
+#### Experiments
+- One way to hit this is `setns()` into a PID namespace whose PID 1 already terminated (e.g., using an open `/proc/<pid>/ns/pid` FD), after which process creation fails with `ENOMEM`.
+- Another way to hit this is calling `unshare(CLONE_NEWPID)` and then having the first `fork()`’d child (the would-be PID 1) exit, causing later `fork()` calls to fail with `ENOMEM`.
+- understand change root,
+- understand mount
+- check facts on `/proc/sys/kernel/ns_last_pid`
+- test how far into their descendants a ancestor PID Namespaces can view. 
+- use ioctl(2) and prctl(2) operations.
+- test that [unshare(2)(CLONE_NEWPID)](https://man.archlinux.org/man/unshare.2.en) can only be called once per process.
+- make unshare and clone fail with a combo of bad flags.
 ### UTS Namespace
 Isolates the hostname and the NIS domain name. 
 - When you create a new UTS namespace, you inherit the hostname and NIS domain name from the parent UTS namespace.
