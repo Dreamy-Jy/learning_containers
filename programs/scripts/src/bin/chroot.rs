@@ -63,7 +63,7 @@ fn main() {
     match unsafe { fork() } {
         Ok(ForkResult::Child) => {
             // Child is now in the PID namespace
-            chroot("/ubuntu-filesystem").unwrap();
+            chroot("/ubuntu").unwrap();
             chdir("/").unwrap();
 
             // This only works in a new process.

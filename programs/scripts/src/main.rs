@@ -34,6 +34,7 @@ fn main() {
 }
 
 fn run() {
+    // check that the program is running as root
     let exe_args: Vec<CString> = {
         let cmd_line_args = env::args()
             .skip(2)
@@ -76,6 +77,12 @@ fn run() {
         .unwrap()
     };
 
+    // check that the program is root in user namespace
+    println!("Child PID: {}", child_pid);
+
+    // When the child process is created it does not have the right permissions in it's user namespace
+    // We can't give it the right permissions from within that namespace as the child process
+    // As an alternative we give to the child process as the parent process which is running as root.
     write(format!("/proc/{}/uid_map", child_pid), "0 0 1\n").unwrap();
     write(format!("/proc/{}/setgroups", child_pid), "deny\n").unwrap();
     write(format!("/proc/{}/gid_map", child_pid), "0 0 1\n").unwrap();
@@ -88,10 +95,13 @@ fn run() {
 }
 
 fn child() {
+    // check that the program is root in user namespace
     println!("Entered the child function");
     let args = env::args().collect::<Vec<String>>();
 
-    chroot("/ubuntu-filesystem").unwrap();
+    // check that the new root filesystem exists
+    // check that you have the right permissions in the file system
+    chroot("/ubuntu").unwrap();
     chdir("/").unwrap();
     mount::<str, str, str, str>(Some("proc"), "proc", Some("proc"), MsFlags::empty(), None)
         .unwrap();
@@ -105,7 +115,7 @@ fn child() {
 fn test() {
     println!("Entered the test function");
 
-    chroot("/ubuntu-filesystem").unwrap();
+    chroot("/ubuntu").unwrap();
     chdir("/").unwrap();
     mount::<str, str, str, str>(Some("proc"), "proc", Some("proc"), MsFlags::empty(), None)
         .unwrap();
