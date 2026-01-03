@@ -1,6 +1,7 @@
 use std::{
     env,
     ffi::CString,
+    fs::write,
     io::Error,
     os::unix::process::CommandExt,
     process::{Command, id},
@@ -13,10 +14,14 @@ use nix::{
         signal::Signal,
         wait::{WaitStatus, waitpid},
     },
-    unistd::{chdir, chroot, execve},
+    unistd::{Gid, Uid, chdir, chroot, execve},
 };
 
 fn main() {
+    dbg!(id());
+    dbg!(Uid::current());
+    dbg!(Gid::current());
+
     let args: Vec<String> = env::args().collect();
     dbg!(&args);
 
@@ -29,7 +34,6 @@ fn main() {
 }
 
 fn run() {
-    dbg!(id());
     let exe_args: Vec<CString> = {
         let cmd_line_args = env::args()
             .skip(2)
@@ -72,6 +76,10 @@ fn run() {
         .unwrap()
     };
 
+    write(format!("/proc/{}/uid_map", child_pid), "0 0 1\n").unwrap();
+    write(format!("/proc/{}/setgroups", child_pid), "deny\n").unwrap();
+    write(format!("/proc/{}/gid_map", child_pid), "0 0 1\n").unwrap();
+
     match waitpid(child_pid, None) {
         Ok(WaitStatus::Exited(_, _code)) => {}
         Ok(WaitStatus::Signaled(_, _sig, _)) => {}
@@ -80,8 +88,7 @@ fn run() {
 }
 
 fn child() {
-    dbg!("Entered the child function");
-    dbg!(id());
+    println!("Entered the child function");
     let args = env::args().collect::<Vec<String>>();
 
     chroot("/ubuntu-filesystem").unwrap();
@@ -96,8 +103,7 @@ fn child() {
 }
 
 fn test() {
-    dbg!("Entered the test function");
-    dbg!(id());
+    println!("Entered the test function");
 
     chroot("/ubuntu-filesystem").unwrap();
     chdir("/").unwrap();

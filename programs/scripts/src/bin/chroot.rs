@@ -18,6 +18,12 @@ fn main() {
     let uid = Uid::current();
     let gid = Gid::current();
 
+    println!(
+        "Outside userns: uid={}, gid={}",
+        Uid::current(),
+        Gid::current()
+    );
+
     unshare(CloneFlags::CLONE_NEWUSER | CloneFlags::CLONE_NEWNS | CloneFlags::CLONE_NEWPID)
         .unwrap();
     // Question Block: why does the ordering matter here?
@@ -27,7 +33,7 @@ fn main() {
     // dbg!(uid);
     // dbg!(gid);
     println!(
-        "Outside userns: uid={}, gid={}",
+        "Inside userns: uid={}, gid={}",
         Uid::current(),
         Gid::current()
     );
@@ -46,7 +52,7 @@ fn main() {
     write_file("/proc/self/gid_map", &format!("0 {} 1\n", gid.as_raw())).unwrap();
 
     println!(
-        "Inside userns: uid={}, gid={}",
+        "After id mapping userns: uid={}, gid={}",
         Uid::current(),
         Gid::current()
     );
