@@ -1,9 +1,10 @@
 use std::{
     env,
     ffi::CString,
-    fs::write,
+    fs::{self, create_dir_all, write},
     io::Error,
     os::unix::process::CommandExt,
+    path::Path,
     process::{Command, id},
 };
 
@@ -14,7 +15,7 @@ use nix::{
         signal::Signal,
         wait::{WaitStatus, waitpid},
     },
-    unistd::{Gid, Uid, chdir, chroot, execve},
+    unistd::{Gid, Pid, Uid, chdir, chroot, execve},
 };
 
 fn main() {
@@ -28,7 +29,6 @@ fn main() {
     match args[1].as_str() {
         "run" => run(),
         "child" => child(),
-        "test" => test(),
         _ => panic!("help"),
     }
 }
@@ -77,6 +77,7 @@ fn run() {
         .unwrap()
     };
 
+    // WARN BLOCK START: Race condition possible here
     // check that the program is root in user namespace
     println!("Child PID: {}", child_pid);
 
@@ -87,11 +88,14 @@ fn run() {
     write(format!("/proc/{}/setgroups", child_pid), "deny\n").unwrap();
     write(format!("/proc/{}/gid_map", child_pid), "0 0 1\n").unwrap();
 
+    cgroup(&child_pid);
+
     match waitpid(child_pid, None) {
         Ok(WaitStatus::Exited(_, _code)) => {}
         Ok(WaitStatus::Signaled(_, _sig, _)) => {}
         _ => {}
     }
+    // WARN BLOCK END: Race condition possible here
 }
 
 fn child() {
@@ -112,13 +116,24 @@ fn child() {
         .expect("Failed to execute command");
 }
 
-fn test() {
-    println!("Entered the test function");
+fn cgroup(pid: &Pid) {
+    // check which version of cgroups is being used.
+    let cgroups = Path::new("/sys/fs/cgroup");
+    let liz_dir = cgroups.join("liz");
 
-    chroot("/ubuntu").unwrap();
-    chdir("/").unwrap();
-    mount::<str, str, str, str>(Some("proc"), "proc", Some("proc"), MsFlags::empty(), None)
-        .unwrap();
+    create_dir_all(&liz_dir).unwrap();
+
+    let subtree_control = cgroups.join("cgroup.subtree_control");
+    if let Ok(controllers) = fs::read_to_string(&subtree_control) {
+        if !controllers.contains("pids") {
+            // Enable pids controller
+            fs::write(&subtree_control, b"+pids").unwrap();
+        }
+    }
+
+    fs::write(liz_dir.join("cgroup.procs"), pid.to_string().as_bytes()).unwrap();
+    // fs::write(liz_dir.join("notify_on_release"), b"1").unwrap(); // only valid in cgroup v1
+    fs::write(liz_dir.join("pids.max"), b"20").unwrap();
 }
 
 #[allow(dead_code)]
